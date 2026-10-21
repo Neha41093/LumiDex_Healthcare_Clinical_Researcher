@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+@layer base {
+  html, body {
+    font-family: Calibri, 'Carlito', 'Segoe UI', Candara, 'Gill Sans', 'DejaVu Sans', sans-serif;
+  }
+}
