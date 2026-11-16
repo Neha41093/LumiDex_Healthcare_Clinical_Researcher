@@ -77,10 +77,9 @@ export const Header: React.FC<HeaderProps> = ({
           
           {/* Prominent Full-Strip LumiDex Brand Unit */}
           <div className="flex items-center space-x-3.5">
-            {/* Clinical Emblem with Breathing Pulse */}
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600/35 via-blue-700/25 to-sky-500/20 border border-sky-400/50 flex items-center justify-center text-sky-300 relative shadow-inner shrink-0 group">
+            {/* Clinical Emblem */}
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600/35 via-blue-700/25 to-sky-500/20 border border-sky-400/50 flex items-center justify-center text-sky-300 shadow-inner shrink-0 group">
               <Activity className="w-5 h-5 text-sky-300 group-hover:scale-110 transition-transform duration-200" />
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-blue-400 ring-2 ring-slate-950 animate-pulse"></span>
             </div>
 
             {/* Brand Title, Description & Repositories Tag */}
@@ -95,7 +94,6 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
               <div className="flex items-center space-x-2 mt-0.5">
                 <span className="text-[11px] text-slate-400 font-mono tracking-wider flex items-center space-x-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
                   <span>NCBI PubMed</span>
                   <span className="text-slate-600">·</span>
                   <span>ClinicalTrials.gov</span>
