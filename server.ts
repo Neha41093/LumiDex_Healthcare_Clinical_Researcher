@@ -4,7 +4,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 
 dotenv.config();
 
@@ -18,6 +18,9 @@ const PORT = parsedPort === 8080 ? 3000 : parsedPort;
 const app = express();
 
 app.use(express.json({ limit: '10mb' }));
+
+// Primary Gemini model for clinical synthesis and conversational intelligence
+const GEMINI_MODEL = 'gemini-4-hydrogen';
 
 // Initialize Gemini SDK with recommended server headers
 let aiClient: GoogleGenAI | null = null;
@@ -308,13 +311,20 @@ app.post('/api/gemini/synthesize', async (req, res) => {
     const metrics = studyData?.metrics || {};
     const determinedArea = studyData?.therapeutic_area || therapeuticArea || 'Biomedical Science';
 
-    const prompt = `You are a Principal Medical Director and Senior Biopharma Commercial Strategist synthesizing actual scraped healthcare research data for the query: "${query}".
+    const systemInstruction = `You are a Principal Medical Director and Senior Biopharma Commercial Strategist synthesizing actual scraped healthcare research data.
 
 STRICT FACTUAL GROUNDING RULES:
-1. ONLY reference medical conditions, molecules, investigational drugs, and endpoints that are EXPLICITLY present in the provided clinical trials or literature data below.
+1. ONLY reference medical conditions, molecules, investigational drugs, and endpoints that are EXPLICITLY present in the provided clinical trials or literature data.
 2. DO NOT invent, hallucinate, or assume any drug molecules (e.g., if the user searched GLP-1, do NOT mention DPP-4 or unrelated drugs unless explicitly present in the data).
 3. DO NOT use generic oncology endpoints (such as OS/PFS) for non-cancer studies. Use ONLY the actual endpoints present in the trial records.
 4. DO NOT include boilerplate placeholder text or disclaimers.
+5. Produce a concise, publication-grade analytical briefing formatted with EXACTLY these markdown headers:
+### 1. Therapeutic Area
+### 2. Research Topic & Target Molecules
+### 3. Verified Public Sources
+### 4. Pivotal Endpoints & Clinical Protocol Findings`;
+
+    const prompt = `Synthesize the verified scraped healthcare research data for the query: "${query}".
 
 Data Scraped:
 - Inferred Dominant Therapeutic Area: ${determinedArea}
@@ -332,36 +342,34 @@ ${JSON.stringify(literatureSample, null, 2)}
 Matched Healthcare Datasets:
 ${JSON.stringify(datasetsSample, null, 2)}
 
-FORMAT REQUIREMENT:
-Produce a concise, publication-grade analytical briefing formatted with EXACTLY these markdown headers:
-### 1. Therapeutic Area
-State the dominant therapeutic area (e.g. ${determinedArea}) and the specific clinical indications evaluated in the scraped records.
+Section guidance:
+- ### 1. Therapeutic Area: State the dominant therapeutic area (e.g. ${determinedArea}) and the specific clinical indications evaluated in the scraped records.
+- ### 2. Research Topic & Target Molecules: Specify the target clinical mechanism and the exact investigational drugs or regimens identified from the scraped protocols (mention each verified product or intervention).
+- ### 3. Verified Public Sources: Summarize the authoritative repositories contributing to this analysis (NCBI PubMed, ClinicalTrials.gov, Europe PMC, and matched datasets like SEER/MIMIC/openFDA) with record counts.
+- ### 4. Pivotal Endpoints & Clinical Protocol Findings: Summarize the verified primary outcome measures, trial phases, and investigator sponsorship directly extracted from the public record.`;
 
-### 2. Research Topic & Target Molecules
-Specify the target clinical mechanism and the exact investigational drugs or regimens identified from the scraped protocols (e.g., mention each verified product or intervention).
-
-### 3. Verified Public Sources
-Summarize the authoritative repositories contributing to this analysis (NCBI PubMed, ClinicalTrials.gov, Europe PMC, and matched datasets like SEER/MIMIC/openFDA) with record counts.
-
-### 4. Pivotal Endpoints & Clinical Protocol Findings
-Summarize the verified primary outcome measures, trial phases, and investigator sponsorship directly extracted from the public record.`;
-
-    // 15-second network timeout guard
-    const timeoutPromise = new Promise<never>((_, reject) => 
-      setTimeout(() => reject(new Error('Gemini API call timed out')), 15000)
+    // 35-second network timeout guard for grounded reasoning
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Gemini API call timed out')), 35000)
     );
 
     const generatePromise = ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite',
+      model: GEMINI_MODEL,
       contents: prompt,
+      config: {
+        systemInstruction,
+        thinkingConfig: {
+          thinkingLevel: ThinkingLevel.MEDIUM,
+        },
+      },
     });
 
-    const response: any = await Promise.race([generatePromise, timeoutPromise]);
+    const response = await Promise.race([generatePromise, timeoutPromise]);
 
     if (response?.text) {
       return res.json({
         summary: response.text,
-        source: 'gemini-3.1-flash-lite'
+        source: GEMINI_MODEL
       });
     }
   } catch (err: any) {
@@ -1772,7 +1780,7 @@ app.post('/api/assistant/chat', async (req, res) => {
   try {
     const ai = getAiClient();
     if (ai && Date.now() >= quotaExhaustedUntil) {
-      const prompt = `You are Dex, the LumiDex Conversational Clinical Navigator & Biopharma Research Partner.
+      const systemInstruction = `You are Dex, the LumiDex Conversational Clinical Navigator & Biopharma Research Partner.
 
 CORE DIRECTIVE:
 You are a genuine, highly intelligent CONVERSATIONAL AGENT.
@@ -1800,9 +1808,9 @@ FORMATTING & CITATIONS:
 
 CONVERSATIONAL CLOSING:
 - Wrap up with an engaging, natural question or offer for the next clinical dimension (e.g. comparing competing constructs, examining subgroup efficacy, or checking manufacturing timelines).
-- NEVER say "search for this in the app" or provide just a link. You are the conversational expert—give the real, complete clinical answer right here in the conversation.
+- NEVER say "search for this in the app" or provide just a link. You are the conversational expert—give the real, complete clinical answer right here in the conversation.`;
 
-Target Subject Assessed: "${activeDisplay}" (Domain: ${area})
+      const prompt = `Target Subject Assessed: "${activeDisplay}" (Domain: ${area})
 
 ${trialsContext.length > 0 ? `Verified Clinical Trials:\n${JSON.stringify(trialsContext, null, 1)}\n` : ''}
 ${litContext.length > 0 ? `Verified PubMed Literature:\n${JSON.stringify(litContext, null, 1)}\n` : ''}
@@ -1812,9 +1820,15 @@ User's Question: "${message}"
 
 Dex's Conversational Clinical Response:`;
 
-      const response: any = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite',
-        contents: prompt
+      const response = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: {
+          systemInstruction,
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.LOW,
+          },
+        },
       });
 
       if (response?.text) {
@@ -1824,7 +1838,7 @@ Dex's Conversational Clinical Response:`;
         }
         return res.json({
           reply: replyText,
-          source: 'gemini-3.1-flash-lite'
+          source: GEMINI_MODEL
         });
       }
     }
